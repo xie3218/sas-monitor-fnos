@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>SAS 硬盘管理</title>
+  <link rel="stylesheet" href="/app/sas-monitor/style.css?v=0.1.6">
+  <script src="/app/sas-monitor/dashboard.js?v=0.1.6" defer></script>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div class="brand">
+      <div class="drive" aria-hidden="true"><i></i></div>
+      <div>
+        <h1>SAS 硬盘管理</h1>
+        <p id="updated" aria-live="polite">正在读取采集结果</p>
+      </div>
+    </div>
+    <button class="primary" type="button" id="refresh">立即采集</button>
+  </header>
+
+  <section class="summary" aria-label="硬盘统计">
+    <div><span>已识别硬盘</span><strong id="count">—</strong></div>
+    <div class="summary-good"><span>健康</span><strong id="healthy">—</strong></div>
+    <div class="summary-alert"><span>需关注 / 故障</span><strong id="alerts">—</strong></div>
+    <div class="summary-unknown"><span>状态未知</span><strong id="unknown">—</strong></div>
+  </section>
+
+  <div class="notices">
+    <p class="notice refresh-status" id="refresh-status" role="status" hidden></p>
+    <p class="notice" id="notice" aria-live="polite" hidden></p>
+  </div>
+
+  <div class="workspace">
+    <section class="panel inventory" aria-labelledby="list-title">
+      <header class="panel-head">
+        <h2 id="list-title">硬盘列表</h2>
+        <button type="button" id="export-all" disabled>导出硬盘总表</button>
+      </header>
+      <div class="list-controls">
+        <input id="search" type="search" placeholder="搜索型号、序列号或设备名" aria-label="搜索型号、序列号或设备名">
+        <select id="status-filter" aria-label="按健康状态筛选">
+          <option value="">全部状态</option>
+          <option value="attention">需关注</option>
+          <option value="failed">SMART 故障</option>
+          <option value="unknown">状态未知</option>
+          <option value="passed">健康</option>
+        </select>
+      </div>
+      <div class="table-scroll" id="list" hidden>
+        <table role="table" aria-labelledby="list-title">
+          <thead role="rowgroup">
+            <tr role="row">
+              <th scope="col" role="columnheader">硬盘</th>
+              <th scope="col" role="columnheader">状态</th>
+              <th scope="col" role="columnheader">容量</th>
+              <th scope="col" role="columnheader">温度</th>
+              <th scope="col" role="columnheader">通电时间</th>
+              <th scope="col" role="columnheader">G-list</th>
+            </tr>
+          </thead>
+          <tbody id="rows" role="rowgroup"></tbody>
+        </table>
+      </div>
+      <details id="probe" class="disclosure" hidden>
+        <summary id="probe-title">采集诊断</summary>
+        <ul id="probe-issues"></ul>
+      </details>
+    </section>
+
+    <section class="panel details" id="detail" aria-labelledby="disk-name" hidden>
+      <header class="panel-head detail-heading">
+        <div>
+          <h2 id="disk-name" tabindex="-1"></h2>
+          <p id="disk-path" aria-live="polite"></p>
+          <p id="health-reasons" class="health-reasons" hidden></p>
+        </div>
+      </header>
+      <div class="detail-controls">
+        <label for="disk-picker">切换硬盘</label>
+        <select id="disk-picker"></select>
+        <button type="button" id="export">导出 SMART 报告</button>
+      </div>
+      <dl id="meta"></dl>
+      <div class="detail-grid">
+        <section>
+          <h3>SCSI 错误计数</h3>
+          <table class="error-table">
+            <thead><tr><th scope="col">操作</th><th scope="col">已纠正</th><th scope="col">不可纠正</th></tr></thead>
+            <tbody id="errors"></tbody>
+          </table>
+        </section>
+        <section>
+          <h3>SMART 自检记录</h3>
+          <ul id="selftests" class="test-list"></ul>
+        </section>
+      </div>
+      <details id="raw" class="disclosure">
+        <summary>查看原始 SMART 报告</summary>
+        <pre id="report" tabindex="0" aria-label="原始 SMART 报告"></pre>
+      </details>
+    </section>
+  </div>
+</main>
+</body>
+</html>

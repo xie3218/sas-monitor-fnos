@@ -1,0 +1,43 @@
+#!/bin/bash
+set -eu
+dest=${TRIM_APPDEST:?}
+var=${TRIM_PKGVAR:?}
+pidfile="$var/web.pid"
+socket="$dest/app.sock"
+running() {
+    [[ -f "$pidfile" ]] && read -r pid < "$pidfile" &&
+    [[ "$pid" =~ ^[1-9][0-9]*$ && -r "/proc/$pid/cmdline" ]] &&
+    tr '\0' '\n' < "/proc/$pid/cmdline" | grep -Fx -- "$dest/server.py" >/dev/null
+}
+exec 9>"$var/lifecycle.lock"
+flock -w 15 9
+case "${1:-}" in
+    start)
+        if running && [[ -S "$socket" ]]; then exit 0; fi
+        rm -f -- "$socket" "$pidfile"
+        /usr/bin/python3 -I "$dest/server.py" "$socket" >>"$var/web.log" 2>&1 </dev/null 9>&- &
+        echo "$!" > "$pidfile"
+        for ((i=0;i<50;i++)); do
+            if [[ -S "$socket" ]] && running; then exit 0; fi
+            sleep .1
+        done
+        if running; then kill "$pid"; fi
+        exit 1
+        ;;
+    stop)
+        if running; then
+            kill "$pid"
+            for ((i=0;i<50;i++)); do
+                if ! running; then break; fi
+                sleep .1
+            done
+            if running; then exit 1; fi
+        fi
+        rm -f -- "$socket" "$pidfile"
+        ;;
+    status)
+        if running && [[ -S "$socket" ]]; then exit 0; fi
+        exit 3
+        ;;
+    *) exit 1 ;;
+esac

@@ -1,0 +1,25 @@
+[Unit]
+Description=Collect SAS SMART telemetry
+
+[Service]
+Type=oneshot
+User=root
+Group=sas-monitor
+ExecStartPre=/usr/bin/rm -f /run/sas-monitor-refresh/request
+ExecStart=/usr/bin/python3 -I /usr/local/lib/sas-monitor/collect.py
+StateDirectory=sas-monitor
+StateDirectoryMode=0750
+RuntimeDirectory=sas-monitor
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0077
+TimeoutStartSec=240
+NoNewPrivileges=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=-/run/sas-monitor-refresh
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
