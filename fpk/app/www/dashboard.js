@@ -26,6 +26,38 @@ const messages = {
   scan_timeout: "硬盘扫描超时。请检查控制器和硬盘连接。",
 };
 
+function setupTheme() {
+  const selector = $("theme");
+  const system = window.matchMedia("(prefers-color-scheme: dark)");
+  const storageKey = "sas-monitor:theme";
+  let preference = "system";
+  try {
+    const saved = window.localStorage.getItem(storageKey);
+    if (saved === "light" || saved === "dark") preference = saved;
+  } catch {
+    // Storage may be disabled in an embedded window.
+  }
+
+  function apply() {
+    document.documentElement.dataset.theme = preference === "system"
+      ? (system.matches ? "dark" : "light")
+      : preference;
+    selector.value = preference;
+  }
+
+  selector.addEventListener("change", () => {
+    preference = selector.value;
+    apply();
+    try {
+      window.localStorage.setItem(storageKey, preference);
+    } catch {
+      // The choice still applies until this window closes.
+    }
+  });
+  system.addEventListener("change", apply);
+  apply();
+}
+
 function node(tag, value, className) {
   const element = document.createElement(tag);
   element.textContent = value;
@@ -342,5 +374,6 @@ $("export-all").addEventListener("click", () => {
   const csv = [columns, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
   download("sas-disk-inventory.csv", "\uFEFF" + csv + "\r\n", "text/csv;charset=utf-8");
 });
+setupTheme();
 refresh();
 setInterval(() => { if (!manualPending) return refresh(); }, 30000);

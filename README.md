@@ -2,7 +2,7 @@
 
 在飞牛桌面查看 SAS 硬盘的 SMART 状态、温度、增长缺陷和错误趋势。应用面向能够访问物理 SAS 盘的飞牛 NAS，支持多盘切换、手动采集和 CSV 导出。
 
-**当前版本 v0.1.6 · [下载飞牛安装包](downloads/sas-monitor-fnos-0.1.6.zip)**
+**当前版本 v0.1.7 · [下载飞牛安装包](https://github.com/xie3218/sas-monitor-fnos/releases/tag/v0.1.7)**
 
 ZIP 包中包含 `sas-monitor.fpk`、后台采集服务和源码。
 
@@ -43,7 +43,7 @@ ZIP 包中包含 `sas-monitor.fpk`、后台采集服务和源码。
 
 ### 从旧版升级
 
-先在应用中心上传新版 `sas-monitor.fpk`，然后关闭并重新打开 App。已经运行 v0.1.5 采集服务的用户可以直接使用 v0.1.6。更早的版本需要将新版 `collector/` 上传到 NAS 并在该目录再次执行 `sudo bash ./install.sh`，以启用新版告警规则。
+先在应用中心上传新版 `sas-monitor.fpk`，然后关闭并重新打开 App。已经运行 v0.1.5 采集服务的用户可以直接使用 v0.1.7。更早的版本需要将新版 `collector/` 上传到 NAS 并在该目录再次执行 `sudo bash ./install.sh`，以启用新版告警规则。
 
 ## 如何看懂告警
 
@@ -83,7 +83,7 @@ sudo journalctl -u sas-monitor-collector.service -n 50 --no-pager
 |---|---|
 | [`fpk/`](fpk/) | 飞牛清单、权限配置、桌面入口、页面及本地服务 |
 | [`collector/`](collector/) | SMART 采集脚本及 systemd 安装、定时采集和即时请求配置 |
-| [`downloads/`](downloads/) | 已打包的版本，可直接下载到 NAS 安装 |
+| [Releases](https://github.com/xie3218/sas-monitor-fnos/releases) | 已打包的版本，可直接下载到 NAS 安装 |
 
 在装有飞牛官方 `fnpack` 的环境中打包：
 
@@ -95,3 +95,7 @@ fnpack build
 采集器在 NAS 上执行只读 SMART 查询，飞牛应用通过本地 Unix Socket 复用管理员登录态。采集结果和告警基线保存在 NAS 本机。定时 SMART 查询可能唤醒休眠盘。
 
 卸载时，可先在 NAS 的 `collector/` 目录运行 `sudo bash ./uninstall.sh` 移除采集服务和告警基线，再从飞牛应用中心卸载桌面 App。
+
+## 许可证
+
+本项目采用 [MIT 许可证](LICENSE)。原作者为 **xie3218**。可以使用、修改和再分发。分发副本或软件的实质部分时，须随附原版权声明和许可声明。安装包及应用界面均标注原作者。

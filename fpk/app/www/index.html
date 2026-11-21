@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
   <title>SAS 硬盘管理</title>
-  <link rel="stylesheet" href="/app/sas-monitor/style.css?v=0.1.6">
-  <script src="/app/sas-monitor/dashboard.js?v=0.1.6" defer></script>
+  <link rel="stylesheet" href="/app/sas-monitor/style.css?v=0.1.7">
+  <script src="/app/sas-monitor/dashboard.js?v=0.1.7" defer></script>
 </head>
 <body>
 <main>
@@ -18,7 +18,15 @@
         <p id="updated" aria-live="polite">正在读取采集结果</p>
       </div>
     </div>
-    <button class="primary" type="button" id="refresh">立即采集</button>
+    <div class="top-actions">
+      <div class="author-mark" aria-label="原作者 xie3218">© xie3218</div>
+      <select id="theme" aria-label="界面主题" title="界面主题">
+        <option value="system">跟随系统</option>
+        <option value="light">浅色</option>
+        <option value="dark">深色</option>
+      </select>
+      <button class="primary" type="button" id="refresh">立即采集</button>
+    </div>
   </header>
 
   <section class="summary" aria-label="硬盘统计">
