@@ -1,0 +1,25 @@
+[Unit]
+Description=Read-only SAS disk surface scans
+Requires=sas-monitor-scan.socket
+After=sas-monitor-scan.socket
+
+[Service]
+ExecStart=/usr/bin/python3 -IB /usr/local/lib/sas-monitor/scan.py
+User=root
+Group=sas-monitor
+StateDirectory=sas-monitor-scan
+StateDirectoryMode=0700
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+DevicePolicy=closed
+DeviceAllow=block-sd r
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX

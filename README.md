@@ -1,8 +1,8 @@
 # SAS 硬盘管理 · 飞牛 fnOS
 
-在飞牛桌面查看 SAS 硬盘的 SMART 状态、温度、增长缺陷和错误趋势。应用面向能够访问物理 SAS 盘的飞牛 NAS，支持多盘切换、手动采集和 CSV 导出。
+在飞牛桌面查看 SAS 硬盘的 SMART 状态、温度、增长缺陷和错误趋势，也可以对直通的单块 SAS 硬盘执行只读坏道扫描。
 
-**当前版本 v0.1.7 · [下载飞牛安装包](https://github.com/xie3218/sas-monitor-fnos/releases/tag/v0.1.7)**
+**当前版本 v0.2.0 · [下载飞牛安装包](https://github.com/xie3218/sas-monitor-fnos/releases/tag/v0.2.0)**
 
 ZIP 包中包含 `sas-monitor.fpk`、后台采集服务和源码。
 
@@ -15,8 +15,9 @@ ZIP 包中包含 `sas-monitor.fpk`、后台采集服务和源码。
 | 错误趋势 | 查看本次新增非介质错误、最近观测到增长的时间和触发状态的原因 |
 | 多盘管理 | 搜索设备、按健康状态筛选、点击列表或使用下拉框切换硬盘 |
 | SMART 采集 | 后台在上次采集结束约 5 分钟后再次运行。点击「立即采集」可主动读取硬盘 |
+| 只读坏道扫描 | 手动扫描所选物理盘，查看进度、已检查扇区数和读失败的 LBA 范围，可中途停止 |
 | 数据导出 | 下载单盘原始 SMART 文本，或把全部硬盘和判定原因导出为 CSV |
-| 飞牛桌面适配 | 浅色毛玻璃界面。宽窗口并排显示列表和详情，窄窗口把列表变成卡片 |
+| 飞牛桌面适配 | 浅色、深色和跟随系统的毛玻璃主题。宽窗口并排显示列表和详情，窄窗口把列表变成卡片 |
 
 ## 安装
 
@@ -43,7 +44,19 @@ ZIP 包中包含 `sas-monitor.fpk`、后台采集服务和源码。
 
 ### 从旧版升级
 
-先在应用中心上传新版 `sas-monitor.fpk`，然后关闭并重新打开 App。已经运行 v0.1.5 采集服务的用户可以直接使用 v0.1.7。更早的版本需要将新版 `collector/` 上传到 NAS 并在该目录再次执行 `sudo bash ./install.sh`，以启用新版告警规则。
+在应用中心上传新版 `sas-monitor.fpk`，再把同一 ZIP 中的 `collector/` 上传到 NAS。SSH 进入这个新版 `collector/` 目录，运行 `sudo bash ./install.sh`。重新打开 App，点「立即采集」。从 v0.1.7 升级也需要执行脚本，它会安装独立的扫描服务。
+
+## 只读坏道扫描
+
+1. 在列表或「切换硬盘」里选择目标盘，在单盘详情点击「开始扫描」。核对型号、序列号和设备名，点击「确认扫描此盘」。
+2. 进度条显示已检查的逻辑扇区比例。遇到读取错误时，服务把出错范围缩小到单扇区并复读；持续失败的扇区显示在「查看读失败的 LBA 范围」中，起止编号均包含在内。读失败也可能来自链路或控制器。
+3. 可以切换硬盘、关闭窗口或稍后重新进入。运行中的进度约每 3 秒更新，和 SMART 采集各自独立。每次只扫一盘；点击「停止扫描」后，服务会等当前内核读取返回。
+
+扫描从 LBA 0 顺序读取到盘尾，使用直接 I/O，只以只读模式打开目标盘。全盘扫描可能唤醒硬盘、占用存储池带宽。读失败达到 64 个扇区会提前结束，剩余区域的状态仍未知。「完成 · 全盘可读」表示本轮从主机可见的所有逻辑扇区读取成功。扫描不写入测试图案、不修复或重映射扇区。
+
+逐扇区扫描支持 Linux 能确认 SAS 端设备、整盘块设备和稳定身份的 HBA 直通盘，支持 512 B 和 4 KiB 等常见逻辑扇区。系统能唯一映射到整盘时，`sg` / `bsg` 入口也可用。只暴露逻辑卷的硬 RAID、`megaraid,N` 成员盘，以及未透传 SAS 拓扑的虚拟磁盘，会在界面提示不可扫描。MegaRAID 物理盘的 SMART 仍可按原方式查看。
+
+每块盘只保留最近一次扫描结果，按硬盘身份关联。NAS 或扫描服务重启后，未结束的任务会显示「扫描中断」及最近保存的进度（约每分钟保存一次）。再次点击「重新扫描」会从 LBA 0 开始。
 
 ## 如何看懂告警
 
@@ -73,6 +86,8 @@ sudo smartctl --scan-open
 sudo systemctl status sas-monitor-collector.path sas-monitor-collector.timer --no-pager
 sudo systemctl start sas-monitor-collector.service
 sudo journalctl -u sas-monitor-collector.service -n 50 --no-pager
+sudo systemctl status sas-monitor-scan.socket --no-pager
+sudo journalctl -u sas-monitor-scan.service -n 50 --no-pager
 ```
 
 针对单盘查看原始报告时，设备名和驱动类型以 `--scan-open` 的输出为准。例如扫描结果为 `/dev/sda -d scsi` 时，可运行 `sudo smartctl -x -d scsi /dev/sda`。
@@ -82,7 +97,7 @@ sudo journalctl -u sas-monitor-collector.service -n 50 --no-pager
 | 路径 | 用途 |
 |---|---|
 | [`fpk/`](fpk/) | 飞牛清单、权限配置、桌面入口、页面及本地服务 |
-| [`collector/`](collector/) | SMART 采集脚本及 systemd 安装、定时采集和即时请求配置 |
+| [`collector/`](collector/) | SMART 采集、只读扇区扫描及配套的 systemd 单元和安装脚本 |
 | [Releases](https://github.com/xie3218/sas-monitor-fnos/releases) | 已打包的版本，可直接下载到 NAS 安装 |
 
 在装有飞牛官方 `fnpack` 的环境中打包：
@@ -94,7 +109,7 @@ fnpack build
 
 采集器在 NAS 上执行只读 SMART 查询，飞牛应用通过本地 Unix Socket 复用管理员登录态。采集结果和告警基线保存在 NAS 本机。定时 SMART 查询可能唤醒休眠盘。
 
-卸载时，可先在 NAS 的 `collector/` 目录运行 `sudo bash ./uninstall.sh` 移除采集服务和告警基线，再从飞牛应用中心卸载桌面 App。
+卸载时，可先在 NAS 的 `collector/` 目录运行 `sudo bash ./uninstall.sh` 移除后台服务、告警基线和扫描记录，再从飞牛应用中心卸载桌面 App。
 
 ## 许可证
 

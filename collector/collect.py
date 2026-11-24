@@ -1,6 +1,7 @@
 """Collect only SAS telemetry and publish one atomic snapshot."""
 import concurrent.futures
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -138,6 +139,48 @@ def disk_identity(disk):
     return None
 
 
+def scan_key(disk):
+    identity = disk_identity(disk)
+    return hashlib.sha256(identity.encode()).hexdigest() if identity else None
+
+
+def scan_block(disk, sysfs=Path("/sys")):
+    """Resolve one whole Linux disk below a physical SAS end device."""
+    name, kind = disk.get("device") or "", disk.get("controllerType")
+    if kind != "scsi" or not DIRECT.fullmatch(name):
+        return None
+    leaf = Path(name).name
+    if name.startswith("/dev/sg") or name.startswith("/dev/bsg/"):
+        scsi_class = "bsg" if name.startswith("/dev/bsg/") else "scsi_generic"
+        blocks = list((sysfs / "class" / scsi_class / leaf / "device/block").glob("sd*"))
+        if len(blocks) != 1:
+            return None
+        leaf = blocks[0].name
+    if not re.fullmatch(r"sd[a-z]+", leaf):
+        return None
+    block = sysfs / "class/block" / leaf
+    if not block.exists() or (block / "partition").exists():
+        return None
+    device = (block / "device").resolve()
+    for ancestor in device.parents:
+        if ancestor.name.startswith("end_device-") and any(
+                (sysfs / "class" / group / ancestor.name).exists()
+                for group in ("sas_end_device", "sas_device")):
+            return leaf
+    return None
+
+
+def scan_support(disk):
+    if RAID_TYPE.fullmatch(disk.get("controllerType") or ""):
+        return "raid"
+    if not disk["scanId"]:
+        return "identity"
+    try:
+        return "available" if scan_block(disk) else "path"
+    except (OSError, RuntimeError):
+        return "path"
+
+
 def measure_non_medium(disk, baselines, timestamp):
     identity = disk_identity(disk)
     current = disk["nonMedium"]
@@ -222,6 +265,9 @@ def publish(data):
     now = datetime.datetime.now(datetime.timezone.utc)
     data["collectedAt"] = now.isoformat()
     if data["state"] == "ok":
+        for disk in data["disks"]:
+            disk["scanId"] = scan_key(disk)
+            disk["scanSupport"] = scan_support(disk)
         timestamp = int(now.timestamp())
         baselines = load_baselines(timestamp)
         apply_health(data, baselines, timestamp)

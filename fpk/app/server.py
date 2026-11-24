@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import json
 import os
 import pwd
+import re
 import socket
 import struct
 import socketserver
@@ -16,6 +17,8 @@ BASE = "/app/sas-monitor"
 WEB = Path(__file__).resolve().parent / "www"
 SNAPSHOT = Path("/run/sas-monitor/snapshot.json")
 REQUEST = Path("/run/sas-monitor-refresh/request")
+SCAN_SOCKET = "/run/sas-monitor-scan.sock"
+SCAN_ROUTE = re.compile(r"/api/scan/([0-9a-f]{64})(?:/(start)|/stop/([0-9a-f]{32}))?")
 ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
@@ -67,6 +70,8 @@ class Handler(BaseHTTPRequestHandler):
         route = path[len(BASE):]
         if route == "/api/snapshot":
             self.snapshot()
+        elif (scan := SCAN_ROUTE.fullmatch(route)) and not any(scan.groups()[1:]):
+            self.scan_command(["status", scan[1]])
         elif route in ASSETS:
             filename, kind = ASSETS[route]
             self.send_data(200, kind, (WEB / filename).read_bytes())
@@ -79,13 +84,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.authorize():
             return
-        if urlsplit(self.path).path != BASE + "/api/refresh":
+        path = urlsplit(self.path).path
+        scan = SCAN_ROUTE.fullmatch(path[len(BASE):]) if path.startswith(BASE + "/") else None
+        is_scan = scan and (scan[2] or scan[3])
+        if not is_scan and path != BASE + "/api/refresh":
             self.send_error(404)
             return
         # The same-origin UI sends this custom header. Cross-origin forms cannot set it.
-        if (self.headers.get_all("X-SAS-Refresh") != ["1"] or
+        header = "X-SAS-Scan" if is_scan else "X-SAS-Refresh"
+        if (self.headers.get_all(header) != ["1"] or
                 self.headers.get("Sec-Fetch-Site", "same-origin") != "same-origin"):
             self.send_json(403, {"state": "forbidden"})
+            return
+        if is_scan:
+            self.scan_command(["start", scan[1]] if scan[2] else ["stop", scan[1], scan[3]])
             return
 
         now = monotonic()
@@ -108,6 +120,25 @@ class Handler(BaseHTTPRequestHandler):
             os.close(fd)
         self.server.refresh_after = now + 10
         self.send_json(202, {"state": "queued", "requestedAt": requested_at})
+
+    def scan_command(self, words):
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.settimeout(3)
+                client.connect(SCAN_SOCKET)
+                client.sendall(json.dumps(words).encode() + b"\n")
+                with client.makefile("rb") as reader:
+                    reply = reader.readline(16384)
+            if not reply.endswith(b"\n"):
+                raise ValueError("incomplete response")
+            status, data = json.loads(reply)
+            if status not in (200, 202, 400, 409, 503) or not isinstance(data, dict):
+                raise ValueError("unexpected response")
+        except FileNotFoundError:
+            status, data = 503, {"error": "upgrade"}
+        except (OSError, ValueError, TypeError):
+            status, data = 503, {"error": "service"}
+        self.send_json(status, data)
 
     def snapshot(self):
         try:

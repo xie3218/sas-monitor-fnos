@@ -1,0 +1,12 @@
+[Unit]
+Description=Accept local SAS surface scan requests
+
+[Socket]
+ListenStream=/run/sas-monitor-scan.sock
+SocketUser=root
+SocketGroup=sas-monitor
+SocketMode=0660
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

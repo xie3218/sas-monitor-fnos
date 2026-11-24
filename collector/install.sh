@@ -18,11 +18,15 @@ if [[ ! -x /usr/sbin/smartctl && ! -x /usr/bin/smartctl ]]; then
     exit 1
 fi
 install -d -o root -g root -m 0755 /usr/local/lib/sas-monitor
-install -o root -g root -m 0644 collect.py /usr/local/lib/sas-monitor/collect.py
+install -o root -g root -m 0644 collect.py scan.py /usr/local/lib/sas-monitor/
 install -o root -g root -m 0644 sas-monitor-collector.{service,timer,path} /etc/systemd/system/
+install -o root -g root -m 0644 sas-monitor-scan.{socket,service} /etc/systemd/system/
 install -o root -g root -m 0644 sas-monitor-refresh.conf /etc/tmpfiles.d/sas-monitor-refresh.conf
 systemd-tmpfiles --create /etc/tmpfiles.d/sas-monitor-refresh.conf
 systemctl daemon-reload
 systemctl enable --now sas-monitor-collector.timer sas-monitor-collector.path
+systemctl enable --now sas-monitor-scan.socket
+# An existing worker must pick up the installed code. A scan in progress becomes interrupted.
+systemctl try-restart sas-monitor-scan.service
 systemctl start --no-block sas-monitor-collector.service
 echo "采集已开始。完成后从飞牛桌面打开「SAS 硬盘管理」。"

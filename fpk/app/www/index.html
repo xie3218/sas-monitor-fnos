@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>SAS 硬盘管理</title>
-  <link rel="stylesheet" href="/app/sas-monitor/style.css?v=0.1.7">
-  <script src="/app/sas-monitor/dashboard.js?v=0.1.7" defer></script>
+  <link rel="stylesheet" href="/app/sas-monitor/style.css?v=0.2.0">
+  <script src="/app/sas-monitor/dashboard.js?v=0.2.0" defer></script>
 </head>
 <body>
 <main>
@@ -92,6 +92,28 @@
         <button type="button" id="export">导出 SMART 报告</button>
       </div>
       <dl id="meta"></dl>
+      <section class="surface" aria-labelledby="scan-heading">
+        <div class="surface-head">
+          <h3 id="scan-heading">只读坏道扫描</h3>
+          <span id="scan-state" class="badge">尚未扫描</span>
+        </div>
+        <p class="surface-hint" id="scan-hint">从第一个逻辑扇区读到盘尾，扫描期间可能影响存储池读写速度。</p>
+        <div id="scan-result" hidden>
+          <progress id="scan-progress" max="100" value="0" aria-label="已检查扇区比例"></progress>
+          <p id="scan-counts"></p>
+          <p id="scan-time"></p>
+          <details id="scan-ranges" hidden>
+            <summary>查看读失败的 LBA 范围</summary>
+            <ul id="scan-lbas"></ul>
+          </details>
+        </div>
+        <p id="scan-message" role="status" hidden></p>
+        <div class="surface-actions">
+          <button id="scan-start" type="button" disabled>开始扫描</button>
+          <button id="scan-back" type="button" hidden>返回</button>
+          <button id="scan-stop" type="button" hidden>停止扫描</button>
+        </div>
+      </section>
       <div class="detail-grid">
         <section>
           <h3>SCSI 错误计数</h3>

@@ -189,6 +189,7 @@ function healthReasons(disk) {
 
 function showDetail() {
   $("detail").hidden = !selected;
+  selectScanDisk(selected);
   if (!selected) return;
   const disk = selected;
   $("disk-name").textContent = disk.model || "SAS 硬盘";
@@ -330,6 +331,148 @@ async function requestCollection() {
     button.disabled = busy;
   }
 }
+
+const scanText = {
+  starting: "核对硬盘中", running: "扫描中", stopping: "等待当前读取结束",
+  stopped: "已停止", interrupted: "扫描中断", limited: "已达到错误上限",
+  raid: "此盘通过 RAID 控制器访问。逐扇区扫描需要直通的 SAS 物理盘。",
+  path: "系统未提供可核实的 SAS 物理块设备路径。请检查 HBA 直通和硬盘映射。",
+  identity: "缺少 WWN 或序列号，无法核对扫描目标。",
+  upgrade: "请在 NAS 的新版 collector 目录运行 sudo bash ./install.sh，然后点击「立即采集」。",
+  service: "暂时无法连接扫描服务，请检查 sas-monitor-scan.socket。",
+  disk_changed: "硬盘身份与清单不符。请点「立即采集」后重新选盘。",
+  diskseq: "当前内核无法核实块设备编号是否已被复用，无法扫描此盘。",
+  geometry: "无法核对容量或逻辑扇区大小，已中断扫描。",
+  offline: "硬盘离线、路径已变化或控制器未就绪。",
+  short_read: "设备返回了不完整的扇区，已中断扫描。",
+  io: "系统读取或保存状态失败，详情见扫描服务日志。",
+  restart: "服务或 NAS 曾重启，进度停在最近保存的检查点。",
+  snapshot: "采集清单暂不可用，请先点「立即采集」。",
+  busy: "已有一项扫描正在运行。", job_changed: "该扫描任务已经结束或变化。",
+  forbidden: "请以飞牛管理员身份重新打开应用。",
+};
+let scanDiskKey = null;
+let scanTimer = null;
+let scanRevision = 0;
+let scanData = null;
+let scanOnline = false;
+let scanPending = false;
+let scanConfirm = false;
+let scanNote = "";
+
+function renderScan() {
+  if (!selected) return;
+  const report = scanData?.result;
+  const active = scanData?.active;
+  const own = active && active.disk === selected.scanId;
+  const other = active && !own;
+  const support = selected.scanSupport || "upgrade";
+  const state = report?.state;
+  const completed = state === "complete";
+  const warn = report?.unreadable > 0 || state === "limited" || state === "interrupted";
+  const badge = $("scan-state");
+  badge.textContent = completed ? (report.unreadable ? "完成 · 有读失败" : "完成 · 全盘可读")
+    : scanText[state] || (support !== "available" ? "不可扫描" : scanOnline ? "尚未扫描" : "等待服务");
+  badge.className = "badge" + (warn ? " attention" : completed ? " passed" : "");
+  $("scan-hint").textContent = scanText[support] ||
+    "从第一个逻辑扇区读到盘尾，扫描期间可能影响存储池读写速度。";
+  $("scan-result").hidden = !report;
+  if (report) {
+    const ratio = report.totalSectors ? report.checkedSectors / report.totalSectors : 0;
+    const pct = Math.floor(ratio * 1000) / 10;
+    $("scan-progress").value = ratio * 100;
+    $("scan-counts").textContent = report.totalSectors
+      ? pct.toFixed(1) + "% · 已检查 " + count(report.checkedSectors) + " / " +
+        count(report.totalSectors, " 个扇区") + " · 读失败 " + count(report.unreadable, " 个")
+      : "尚未读取扇区";
+    const when = (value) => new Date(value * 1000).toLocaleString("zh-CN", {hour12: false});
+    $("scan-time").textContent = "开始于 " + when(report.startedAt) +
+      (report.endedAt ? " · 结束于 " + when(report.endedAt) : "");
+    const ranges = report.ranges || [];
+    $("scan-ranges").hidden = !ranges.length;
+    $("scan-lbas").replaceChildren(...ranges.map(([first, last]) =>
+      node("li", first === last ? String(first) : first + " – " + last)));
+  }
+  const start = $("scan-start");
+  start.hidden = !!own || support !== "available";
+  start.disabled = !scanOnline || scanPending || !!active;
+  start.textContent = scanConfirm ? "确认扫描此盘" : report ? "重新扫描" : "开始扫描";
+  $("scan-back").hidden = !scanConfirm;
+  $("scan-stop").hidden = !own;
+  $("scan-stop").disabled = !scanOnline || scanPending || state === "stopping";
+  const lines = [];
+  if (scanConfirm) lines.push("将扫描 " + (selected.model || "SAS 硬盘") + " · " +
+    (selected.serial || selected.wwn) + "（" + selected.device + "）。关闭窗口后扫描会继续。");
+  if (other) lines.push("正在扫描另一块硬盘：" + active.label);
+  if (state === "stopping") lines.push("已请求停止，正在等待硬盘返回当前读取。");
+  if (state === "limited") lines.push("已发现 64 个不可读扇区，提前结束。其余区域尚未检查。");
+  if (state === "interrupted") lines.push(scanText[report.error] || "扫描未完成。");
+  if (report?.saveFailed) lines.push("结果只在本次服务运行期间可用，写入历史记录失败。");
+  if (scanNote) lines.push(scanNote);
+  $("scan-message").textContent = lines.join(" ");
+  $("scan-message").hidden = !lines.length;
+}
+
+async function scanRequest(action = "") {
+  const key = selected?.scanId;
+  if (!key) return;
+  if (scanTimer !== null) clearTimeout(scanTimer);
+  const revision = ++scanRevision;
+  scanPending = !!action;
+  if (action) { scanConfirm = false; scanNote = ""; renderScan(); }
+  try {
+    const options = {cache: "no-store", signal: AbortSignal.timeout(6500)};
+    if (action) Object.assign(options, {method: "POST", headers: {"X-SAS-Scan": "1"}});
+    const response = await fetch("/app/sas-monitor/api/scan/" + key + action, options);
+    const data = await response.json().catch(() => ({}));
+    if (revision !== scanRevision) return;
+    if (!response.ok) {
+      const code = data.error || (response.status === 403 ? "forbidden" : "service");
+      throw new Error(code);
+    }
+    scanOnline = true;
+    scanData = data;
+    scanNote = "";
+    if (data.active) scanConfirm = false;
+  } catch (error) {
+    if (revision !== scanRevision) return;
+    scanOnline = false;
+    scanNote = scanText[error.message] || scanText.service;
+  } finally {
+    if (revision === scanRevision) {
+      scanPending = false;
+      renderScan();
+      scanTimer = setTimeout(() => scanRequest(), !scanOnline || scanData?.active ? 3000 : 15000);
+    }
+  }
+}
+
+function selectScanDisk(disk) {
+  const key = disk && (disk.scanId || deviceKey(disk)) + "/" + (disk.scanSupport || "upgrade");
+  if (key === scanDiskKey) return;
+  scanDiskKey = key;
+  ++scanRevision;
+  if (scanTimer !== null) clearTimeout(scanTimer);
+  scanTimer = null;
+  scanData = null;
+  scanOnline = scanPending = scanConfirm = false;
+  scanNote = "";
+  $("scan-ranges").open = false;
+  renderScan();
+  if (disk?.scanId) scanRequest();
+}
+
+$("scan-start").addEventListener("click", () => {
+  if (!selected?.scanId || !scanOnline || scanData?.active || scanPending) return;
+  if (scanConfirm) { scanRequest("/start"); return; }
+  scanConfirm = true;
+  renderScan();
+});
+$("scan-back").addEventListener("click", () => { scanConfirm = false; renderScan(); });
+$("scan-stop").addEventListener("click", () => {
+  const active = scanData?.active;
+  if (active && active.disk === selected?.scanId && !scanPending) scanRequest("/stop/" + active.job);
+});
 
 function download(filename, contents, contentType) {
   const url = URL.createObjectURL(new Blob([contents], {type: contentType}));

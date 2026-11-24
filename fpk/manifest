@@ -1,7 +1,7 @@
 appname=sas-monitor
-version=0.1.7
+version=0.2.0
 display_name=SAS 硬盘管理
-desc=查看 SAS 硬盘健康、温度、错误计数及 SMART 自检记录
+desc=监控 SAS 硬盘健康、温度及错误趋势，按盘执行只读坏道扫描
 maintainer=xie3218
 distributor=xie3218
 source=thirdparty
